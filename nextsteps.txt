@@ -1,0 +1,24 @@
+kcdecode:
+	x add: write command line params to file
+
+kcverify:
+	x add: write new file option, same format
+	x add: skip some time at start
+	x add: skip some time at end
+	? add: smarter verification??
+	
+kcconvert:
+	text file to core format
+
+kcmerge:
+	core format: merge digital tracks?
+	merge analog stuff?
+	
+kcwav:
+	core format to wav file
+	
+kcmess:
+	core format to tap file
+
+	
+	
