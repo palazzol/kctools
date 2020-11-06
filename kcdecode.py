@@ -118,13 +118,43 @@ class PerSample:
         self.sample_buffer = []
         #self.last_ifrac = 0.0
         self.pertransition = PerTransition(args,self.samples_per_bit,self.framerate)
+        self.dcwindow_samples = []
+        self.dcwindow_mid_index = -1
+        self.dcwindow_i_shift = 0
+        self.dcwindow_is_active = False
+        if self.samples_per_bit * args.dcwindow > 1.0:
+            # Only use DC offset windowing if dcwindow_len is >= 2
+            #
+            # When activated, the values in dcwindow_samples will be averaged which will 
+            # then be used to offset the middle sample.  This is used to remove DC bias
+            # and low-frequency noise from the data.  Note that the dcwindow_samples is
+            # is initialized to a fixed length and filled with zeros.
+            self.dcwindow_is_active = True
+            dcwindow_len = math.ceil( self.samples_per_bit * args.dcwindow )
+            self.dcwindow_mid_index = math.floor( dcwindow_len/2 )
+            self.dcwindow_i_shift = dcwindow_len - self.dcwindow_mid_index - 1
+            for i in range( 0, dcwindow_len):
+                self.dcwindow_samples.append(0.0)
+            print( "DC offset window size = ", dcwindow_len )
+            #print( "dcwindow_mid_index = ", self.dcwindow_mid_index )
+            #print( "dcwindow_i_shift   = ", self.dcwindow_i_shift )
 
     def Process(self,i,sample):
         "Called for Every Sample to be processed"
+        if self.dcwindow_is_active:
+            # Apply the DC offset window algorithm:
+            # Shift the samples in the DC offset list, compute the DC offset and subtract it
+            # from the middle sample, adjust i to represent the middle sample.
+            self.dcwindow_samples.append(sample)
+            self.dcwindow_samples.pop(0)
+            sample = self.dcwindow_samples[ self.dcwindow_mid_index ] - sum( self.dcwindow_samples )/len( self.dcwindow_samples )
+            i = i - self.dcwindow_i_shift
+            # Uncomment below for CSV output with 2 columns: samples_original, samples_dc_offset_removed
+            #print( self.dcwindow_samples[ self.dcwindow_mid_index ]/32768.0, "," ,sample/32768.0 )
         self.sample_buffer.append(sample)
         if len(self.sample_buffer) > self.energy_window:
             self.sample_buffer.pop(0)
-        if len(self.sample_buffer) == self.energy_window:
+        if ( len(self.sample_buffer) == self.energy_window ) and ( i + self.dcwindow_i_shift > len(self.dcwindow_samples) ) :
             # define energy as max-min over the window
             energy = max(self.sample_buffer) - min(self.sample_buffer)
             # define decision threshold as (max+min)/2 over the window
@@ -154,12 +184,15 @@ class KCFile:
         parser.add_argument('-b','--bitrate', type=float, default=3000.0, help='nominal bitrate (default=3000.0)')
         parser.add_argument('-e','--energy', type=float, default=3.0, help='energy window (default=3.0 bits)')
         parser.add_argument('-m','--measure', action='store_true', help='measure mode')
+        parser.add_argument('-d','--dcwindow', type=float, default=1.5, help='Window size to remove DC offset and low frequency noise.  Default = 1.5 bits.  Recommended values to be > 1.1 and < 4.5, but avoid number near integers.  Use 0.0 or negative to disable)')
         self.args = parser.parse_args()
         self.numtracks = None
         self.framerate = None
         self.sampwidth = None
         self.nframes = None
         self.persample = None
+        print(self.dcwindow)
+        laskdjsd
         self.args.outfile.write('cmds')
         for arg in sys.argv:
             self.args.outfile.write(' '+arg)
