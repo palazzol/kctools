@@ -133,8 +133,8 @@ class PerLine:
                     """
                     if self.fpout == 0:
                         #self.fpout = open('record'+str(column_array[0]&0x3ff)+'.bin','wb')
-                        self.fpout = open('record_'+str(self.record)+'.bin','wb')
-                        self.args.outfile.write('file record_'+str(self.record)+'.bin\n')
+                        self.fpout = open('record_'+str(self.record).rjust(4, '0')+'.bin','wb')
+                        self.args.outfile.write('file record_'+str(self.record).rjust(4, '0')+'.bin\n')
                         self.record = self.record + 1
                     for j in range(0,32):
                         val = column_array[j]&0x3ff
