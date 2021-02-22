@@ -53,6 +53,7 @@ def main():
         inBinCfg.readFiles()
         
     # Read and parse the record files
+    loggableMessages = []
     if   args.rec_type == 'ro_data':
         recordReader = KCRODataRecordReader( memoryMap, args.rec_files, args.rec_start, args.rec_end, args.rec_truncation_ok, printer, args.short_logging )
         recordReader.parse()
@@ -61,9 +62,11 @@ def main():
     elif args.rec_type == 'ro_basic':
         recordReader = KCBasicRecordReader( memoryMap, True, args.rec_files, args.rec_start, args.rec_end, printer )
         recordReader.parse()
+        loggableMessages = recordReader.getLoggableMessages()
     elif args.rec_type == 'rw_basic':
         recordReader = KCBasicRecordReader( memoryMap, False, args.rec_files, args.rec_start, args.rec_end, printer )
         recordReader.parse()
+        loggableMessages = recordReader.getLoggableMessages()
     else:
         printer.errorExit( 1, "Illegal --rec-type value of %s" % args.rec_type )
         
@@ -73,6 +76,7 @@ def main():
     # Write the output BIN+CFG files
     if args.out_bin_cfg != None:
         outBinCfg = BinCfgFilePair( args.out_bin_cfg, memoryMap, args.file_overwrite, printer )
+        outBinCfg.queueCommentsForWrite( loggableMessages )
         outBinCfg.appendCfg( inBinCfg )
         outBinCfg.writeFiles()
         
