@@ -740,7 +740,9 @@ class KCBasicUtils:
             kcDispChar = character
         elif escGroup != None and escChar != None:
             # The main escape sequence decoding block
-            if escGroup >= 16 and escGroup <= 19 and escChar >= 64 and escChar <= 128:
+            if escGroup >= 16 and escGroup <= 19 and escChar >= 3 and escChar <= 255:
+                # Through experimentation, escChar == escChar MOD 64 except when 0, 1, and maybe 2
+                # Mattel sometimes took advantage of this trick so it will be handled here.
                 kcDispChar = ( ( escGroup & 0x03 ) << 6 ) | ( escChar & 0x3F )
             if escGroup == 20 and escChar >= 65 and escChar <= 103:
                 resultSnippet = HPOS % ( escChar - 64 )
@@ -843,6 +845,7 @@ class BinCfgFilePair:
         self.cfgSections        = {}    # keys are section strings, values are lists of lines
         self.doAddCommandLine   = True
         self._printer           = statusPrinter
+        self.queuedComments     = []
 
     def getBaseFilename( self, fileNamesBase ):
         """
@@ -942,6 +945,8 @@ class BinCfgFilePair:
         
         self._printer.printStatus( 0, 'Writing to BIN and CFG files ...' )
         self.addCommandLineComment()
+        for i in range( 0, len( self.queuedComments ) ):
+            self.cfgSections[self.__KEY_NONE].insert( i+1, '; ' + self.queuedComments[i] ) # The +1 is so queued comments are inserted below the command-line
         if self.__KEY_MAPPING not in self.cfgSections:
             self.cfgSections[self.__KEY_MAPPING] = []
         sectionKeys = self.cfgSections.keys()
@@ -1019,6 +1024,19 @@ class BinCfgFilePair:
         if self.__KEY_NONE not in self.cfgSections:
             self.cfgSections[self.__KEY_NONE] = []
         self.cfgSections[self.__KEY_NONE].insert( 0, commandLine )
+
+    def queueCommentsForWrite( self, linesOfText ):
+        """
+        Queues up one-line comment(s) that will be written out later to a file.
+            linesOfText - Either a string or a list of strings of one-line comments
+        """
+        if isinstance( linesOfText, list):
+            for i in range( 0, len( linesOfText ) ):
+                self.queuedComments.append( linesOfText[i] )
+        elif isinstance( linesOfText, str):
+            self.queuedComments.append( linesOfText )
+        else:
+            self.queuedComments.append( str( linesOfText ) )
 
     def lineHasComment( self, lineText ):
         """
@@ -1297,6 +1315,7 @@ class KCBasicRecordReader(KCAbstractRecordReader):
         # Similar to above but is a modified copy of the above since __TYPE_VARIABLES records are
         # allowed to be shifted in memory (so that variables start immediately after a program).
         self.__inMemoryHeaders          = self.__firstRecordHeader.copy()
+        self.__loggableMessages         = []
 
     def parse(self):
         """
@@ -1356,8 +1375,7 @@ class KCBasicRecordReader(KCAbstractRecordReader):
         result.address = addressStart
         result.length  = addressEnd - addressStart
         return result
-        
-    
+
     def safeReadMemoryMapLowBytesAsWord( memoryMap, address ):
         """
         Reads the low bytes from memoryMap as a word or returns None if the low bytes have not been written to
@@ -1545,9 +1563,13 @@ class KCBasicRecordReader(KCAbstractRecordReader):
                 forceOverwrite = True
                 newScalarsStart = self.memoryMap.readLowBytesAsWord( self.__ADDR_SCALARS_START ) - ( self.__BASIC_ADDRESS_START - self.KC_TO_MC_OFFSET )
                 if isFirstHeader and self.__inMemoryHeaders[self.__HEADER_PROGRAM_DECLES] != newScalarsStart:
-                    self._printer.printStatus( 1, "INFO: Loading VSAV/VLOD data into existing memory map." )
-                    self._printer.printStatus( 1, "      Shifting start address of variables from $%04x to existing $%04x." %    \
-                                               ( self.__inMemoryHeaders[self.__HEADER_PROGRAM_DECLES], newScalarsStart ) )
+                    message1 = "INFO: Loading VSAV/VLOD data into existing memory map."
+                    message2 = "    Shifting start address of variables from $%04x to existing $%04x." % \
+                               ( self.__inMemoryHeaders[self.__HEADER_PROGRAM_DECLES], newScalarsStart )
+                    self._printer.printStatus( 1, message1 )
+                    self._printer.printStatus( 1, message2 )
+                    self.__loggableMessages.append( message1 )
+                    self.__loggableMessages.append( message2 )
                 self.__inMemoryHeaders[self.__HEADER_PROGRAM_DECLES] = newScalarsStart
         
         # Finally check that the header values don't violate memory limitations
@@ -1564,6 +1586,12 @@ class KCBasicRecordReader(KCAbstractRecordReader):
             self._printer.errorExit( 3, 'Total BASIC structures in header exceed allowed memory range' )
 
         return forceOverwrite
+
+    def getLoggableMessages(self):
+        """
+        Returns a list of loggable messages
+        """
+        return self.__loggableMessages
 
 
 
