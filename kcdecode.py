@@ -191,8 +191,6 @@ class KCFile:
         self.sampwidth = None
         self.nframes = None
         self.persample = None
-        print(self.dcwindow)
-        laskdjsd
         self.args.outfile.write('cmds')
         for arg in sys.argv:
             self.args.outfile.write(' '+arg)
