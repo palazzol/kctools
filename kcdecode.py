@@ -27,6 +27,7 @@ class PerTransition:
         self.nominal_samples_per_bit = samples_per_bit
         self.absolute_percent_threshold = 75.0
         self.relative_percent_threshold = 10.0
+        #self.energy_threshold = 2000.0  # Higher threshold reduces noise, but may drop signals too
         self.energy_threshold = 500.0
         self.framerate = framerate
         self.perbit = PerBit(args)
@@ -138,9 +139,25 @@ class PerSample:
             print( "DC offset window size = ", dcwindow_len )
             #print( "dcwindow_mid_index = ", self.dcwindow_mid_index )
             #print( "dcwindow_i_shift   = ", self.dcwindow_i_shift )
+        self.hf_prev_sample = 0.0
+        self.hfmax = 1.0
+        if args.highfilter > 0.0 and args.highfilter < 1.0:
+            self.hfmax = args.highfilter
+        self.hfmax = self.hfmax * 65536
 
     def Process(self,i,sample):
         "Called for Every Sample to be processed"
+        # Apply simple high frequency filter
+        sample_org = sample
+        sample_delta = sample - self.hf_prev_sample
+        if abs( sample_delta ) > self.hfmax:
+            if sample_delta > 0:
+                sample = self.hf_prev_sample + self.hfmax
+            else:
+                sample = self.hf_prev_sample - self.hfmax
+        self.hf_prev_sample = sample
+        #print( sample_org/32768.0, "," ,sample/32768.0 )
+
         if self.dcwindow_is_active:
             # Apply the DC offset window algorithm:
             # Shift the samples in the DC offset list, compute the DC offset and subtract it
@@ -174,7 +191,7 @@ class PerSample:
                 self.pertransition.Process(energy,ifrac)
                 ###process_transition(energy,ifrac)
                 #last_ifrac = ifrac
-    
+
 class KCFile:
     def __init__(self):
         parser = argparse.ArgumentParser(description='Decode KC tape data.')
@@ -182,9 +199,12 @@ class KCFile:
         parser.add_argument('-o','--outfile', type=argparse.FileType('w'), default=sys.stdout, help='Output file')
         parser.add_argument('-t','--track', type=int, default=0, help='track number (default=0)')
         parser.add_argument('-b','--bitrate', type=float, default=3000.0, help='nominal bitrate (default=3000.0)')
-        parser.add_argument('-e','--energy', type=float, default=3.0, help='energy window (default=3.0 bits)')
+        parser.add_argument('-g','--energy', type=float, default=3.0, help='energy window (default=3.0 bits)')
         parser.add_argument('-m','--measure', action='store_true', help='measure mode')
         parser.add_argument('-d','--dcwindow', type=float, default=1.5, help='Window size to remove DC offset and low frequency noise.  Default = 1.5 bits.  Recommended values to be > 1.1 and < 4.5, but avoid number near integers.  Use 0.0 or negative to disable)')
+        parser.add_argument('-s','--start', type=float, default=0.0, help='Start time, measured in seconds.  Default is the start of input file.')
+        parser.add_argument('-e','--end', type=float, default=-1.0, help='End time, measured in seconds.  Default is the end of the input file.')
+        parser.add_argument('-f','--highfilter', type=float, default=1.0, help='Simple high frequency filter/attentuator, specified as a decimalized percentage of the signal range that is the max sample-to-sample delta cap.  Only used if value is in the range of (0.0,1.0].  For example, 0.1 means that the sample-to-sample delta would be capped at 10%%.  Default is 1.0 (i.e. 100%% delta is allowed).')
         self.args = parser.parse_args()
         self.numtracks = None
         self.framerate = None
@@ -212,8 +232,18 @@ class KCFile:
         self.persample = PerSample(self.args, self.framerate)
         
         offset = self.args.track*self.sampwidth
-            
-        for i in range(0,self.nframes):
+
+        # Set up the start and finish frame numbers.
+        frameEnd = int( self.args.end * self.framerate )
+        if frameEnd < 0:
+            frameEnd = self.nframes
+        frameEnd = min( frameEnd, self.nframes )
+        frameStart = int( self.args.start * self.framerate )
+        frameStart = max( 0, frameStart )
+        frameStart = min( frameStart, frameEnd )
+        if frameStart > 0:
+            wr.readframes(frameStart)
+        for i in range(frameStart, frameEnd):
             frame = wr.readframes(1)
             # Get one signed, 16-bit sample
             sample = frame[offset]+frame[offset+1]*256
