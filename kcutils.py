@@ -610,15 +610,17 @@ class KCBasicUtils:
         if address < KCBasicRecordReader.ADDRESS_START or address > KCBasicRecordReader.ADDRESS_END:
             statusPrinter.errorExit( 1, "String's address of $%04x is out-of-range" % address )
 
-        memoryMap = memoryStream.memoryMap
-        if memoryMap.checkStateRange( address, length, MCMemoryMap.STATE_WRITTEN, True ) == False:
-            return "Unreadable string of length %d at address $%04x" % ( length, address )
-
-        # Determine if the string is Program or Dynamic.  If program, then adjust the address location by an offset.
         class Result: pass
         result = Result()
         result.value     = ""
         result.isDynamic = False
+
+        memoryMap = memoryStream.memoryMap
+        if memoryMap.checkStateRange( address, length, MCMemoryMap.STATE_WRITTEN, True ) == False:
+            result.value = "Unreadable string of length %d at address $%04x" % ( length, address )
+            return result
+
+        # Determine if the string is Program or Dynamic.  If program, then adjust the address location by an offset.
         dynaAddress = None
         dynaLength  = 0
         if dynamicStringsBlockInfo != None and \
